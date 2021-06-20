@@ -104,6 +104,9 @@ struct string_fuzzy_match_t {
     static maybe_t<string_fuzzy_match_t> try_create(const wcstring &string,
                                                     const wcstring &match_against,
                                                     bool anchor_start);
+    static maybe_t<string_fuzzy_match_t> try_create_roman(const wcstring &string,
+                                                          const wcstring &match_against,
+                                                          bool anchor_start);
 
     /// \return a rank for filtering matches.
     /// Earlier (smaller) ranks are better matches.

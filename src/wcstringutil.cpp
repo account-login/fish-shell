@@ -9,6 +9,7 @@
 
 #include "common.h"
 #include "flog.h"
+#include "./pinyin/pinyin_match.h"
 
 wcstring_range wcstring_tok(wcstring &str, const wcstring &needle, wcstring_range last) {
     using size_type = wcstring::size_type;
@@ -164,9 +165,9 @@ static bool subsequence_in_string(const wcstring &needle, const wcstring &haysta
 }
 
 // static
-maybe_t<string_fuzzy_match_t> string_fuzzy_match_t::try_create(const wcstring &string,
-                                                               const wcstring &match_against,
-                                                               bool anchor_start) {
+maybe_t<string_fuzzy_match_t> string_fuzzy_match_t::try_create_roman(const wcstring &string,
+                                                                     const wcstring &match_against,
+                                                                     bool anchor_start) {
     // Helper to lazily compute if case insensitive matches should use icase or smartcase.
     // Use icase if the input contains any uppercase characters, smartcase otherwise.
     auto get_case_fold = [&] {
@@ -224,6 +225,37 @@ maybe_t<string_fuzzy_match_t> string_fuzzy_match_t::try_create(const wcstring &s
 
     // We do not currently test subseq icase.
     return none();
+}
+
+maybe_t<string_fuzzy_match_t> string_fuzzy_match_t::try_create(const wcstring &string,
+                                                               const wcstring &match_against,
+                                                               bool anchor_start) {
+    maybe_t<string_fuzzy_match_t> roman = try_create_roman(string, match_against, anchor_start);
+    if (roman.has_value() && roman.value().is_exact_or_prefix()) {
+        return roman;   // no further improvement
+    }
+
+    const wchar_t k_first_hanzi = 0x3007;
+    bool maybe_pinyin = false;
+    for (wchar_t ch : match_against) {
+        if (ch >= k_first_hanzi) {
+            maybe_pinyin = true;
+            break;
+        }
+    }
+    if (!maybe_pinyin) {
+        return roman;   // fast path
+    }
+
+    uint8_t pycls = pinyin_match(string, match_against);
+    if (pycls == 0 || (anchor_start && pycls > 1 + uint8_t(contain_type_t::prefix))) {
+        return roman;   // pinyin not matched
+    }
+
+    if (roman.has_value() && uint8_t(roman.value().type) + 1 <= pycls) {
+        return roman;   // pinyin match not better
+    }
+    return string_fuzzy_match_t{contain_type_t(pycls - 1), case_fold_t::icase};
 }
 
 uint32_t string_fuzzy_match_t::rank() const {
