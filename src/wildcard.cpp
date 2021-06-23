@@ -499,8 +499,12 @@ static bool wildcard_test_flags_then_complete(const wcstring &filepath, const wc
         return false;
     }
 
-    if (is_windows_subsystem_for_linux() &&
-        string_suffixes_string_case_insensitive(L".dll", filename)) {
+#if defined(__CYGWIN__)
+    bool exe_hack = executables_only;
+#else
+    bool exe_hack = executables_only && is_windows_subsystem_for_linux();
+#endif
+    if (exe_hack && string_suffixes_string_case_insensitive(L".dll", filename)) {
         return false;
     }
 
@@ -522,8 +526,15 @@ static bool wildcard_test_flags_then_complete(const wcstring &filepath, const wc
         return wildcard_complete(filename + L'/', wc, desc_func, out, expand_flags,
                                  COMPLETE_NO_SPACE) == wildcard_result_t::match;
     }
-    return wildcard_complete(filename, wc, desc_func, out, expand_flags, 0) ==
-           wildcard_result_t::match;
+
+    // Try to remove the ".exe" suffix from the completion result for cygwin.
+    // If wc is the prefix of filename and that prefix does not overlap with the ".exe" suffix,
+    // then we can safely remove the ".exe" suffix since it can not be part of the match.
+    bool strip_exe = exe_hack && string_suffixes_string_case_insensitive(L".exe", filename) &&
+                     wcslen(wc) + 4 <= filename.size() &&
+                     string_prefixes_string_case_insensitive(wc, filename);
+    return wildcard_complete(strip_exe ? filename.substr(0, filename.size() - 4) : filename, wc,
+                             desc_func, out, expand_flags, 0) == wildcard_result_t::match;
 }
 
 class wildcard_expander_t {
